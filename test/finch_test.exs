@@ -207,10 +207,12 @@ defmodule FinchTest do
                end)
     end
 
-    test "successful post streaming request, with streaming body and query string", %{bypass: bypass} do
+    test "successful post streaming request, with streaming body and query string", %{
+      bypass: bypass
+    } do
       start_supervised!({Finch, name: MyFinch})
 
-      req_stream = Stream.map(1..10_000, fn(_) -> "please" end)
+      req_stream = Stream.map(1..10_000, fn _ -> "please" end)
       req_body = req_stream |> Enum.join("")
       response_body = "{\"right\":\"here\"}"
       header_key = "content-type"
@@ -310,13 +312,17 @@ defmodule FinchTest do
 
       :sys.suspend(MyFinch)
 
-      assert {:timeout, _} = catch_exit(
-        Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 0)
-      )
+      e =
+        assert_raise RuntimeError, fn ->
+          Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 0)
+        end
+
+      assert e.message =~ "Finch was unable to provide a connection within the timeout"
 
       :sys.resume(MyFinch)
 
-      assert {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 1)
+      assert {:ok, %Response{}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 1)
     end
   end
 
@@ -410,9 +416,9 @@ defmodule FinchTest do
 
       try do
         Finch.build(:get, endpoint(bypass)) |> Finch.request(client, pool_timeout: 0)
-      catch
-        :exit, reason ->
-          assert {:timeout, _} = reason
+      rescue
+        e in RuntimeError ->
+          assert e.message =~ "Finch was unable to provide a connection within the timeout"
       end
 
       assert_receive {^ref, :start}
@@ -709,11 +715,13 @@ defmodule FinchTest do
                |> Finch.stream(MyFinch, acc, fun)
     end
 
-    test "successful post request, with query string and streaming request body", %{bypass: bypass} do
+    test "successful post request, with query string and streaming request body", %{
+      bypass: bypass
+    } do
       start_supervised!({Finch, name: MyFinch})
       query_string = "query=value"
       req_headers = [{"content-type", "application/json"}]
-      req_stream = Stream.map(1..10_000, fn(_) -> "please" end)
+      req_stream = Stream.map(1..10_000, fn _ -> "please" end)
       resp_body = "{hi:\"there\"}"
 
       Bypass.expect_once(bypass, "POST", "/", fn conn ->
@@ -730,7 +738,12 @@ defmodule FinchTest do
       end
 
       assert {:ok, {200, [_ | _], ^resp_body}} =
-               Finch.build(:post, endpoint(bypass, "?" <> query_string), req_headers, {:stream, req_stream})
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 req_headers,
+                 {:stream, req_stream}
+               )
                |> Finch.stream(MyFinch, acc, fun)
     end
   end
